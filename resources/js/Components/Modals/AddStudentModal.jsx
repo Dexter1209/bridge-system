@@ -15,9 +15,9 @@ export default function AddStudentModal({ isOpen, onClose, filterMode = 'section
     const [importFile, setImportFile] = useState(null);
     const [importProcessing, setImportProcessing] = useState(false);
     const [importError, setImportError] = useState(null);
-    const fileInputRef = useRef(null); // 🧠 FIXED: Added ref for the file input
+    const fileInputRef = useRef(null); //  FIXED: Added ref for the file input
 
-    // 🧠 FIXED: Lock background scrolling when modal is open
+    //  FIXED: Lock background scrolling when modal is open
     useEffect(() => {
         if (isOpen) {
             setAnimate(true);
@@ -132,7 +132,7 @@ export default function AddStudentModal({ isOpen, onClose, filterMode = 'section
         }
     };
 
-    // 🧠 FIXED: Handle File Input correctly so the same file can be selected again if it fails
+    //  FIXED: Handle File Input correctly so the same file can be selected again if it fails
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -185,7 +185,7 @@ export default function AddStudentModal({ isOpen, onClose, filterMode = 'section
                 }
             });
             if (response.data.success) {
-                toast.success(response.data.message); // 🧠 FIXED: Alert to Toast
+                toast.success(response.data.message); //  FIXED: Alert to Toast
                 closeModal();
                 window.location.reload();
             } else {
@@ -202,7 +202,7 @@ export default function AddStudentModal({ isOpen, onClose, filterMode = 'section
     if (!isOpen) return null;
 
     return (
-        // 🧠 FIXED: Increased z-index to z-[9999]
+        //  FIXED: Increased z-index to z-[9999]
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center transition-all duration-300 p-4 ${animate ? "bg-gray-900/60 backdrop-blur-sm" : "bg-transparent backdrop-blur-none pointer-events-none"}`}>
             
             {/* Modal Card */}
@@ -258,8 +258,8 @@ export default function AddStudentModal({ isOpen, onClose, filterMode = 'section
                                 <input 
                                     type="file" 
                                     accept=".csv, .xlsx"
-                                    ref={fileInputRef} // 🧠 FIXED: Attached ref
-                                    onChange={handleFileChange} // 🧠 FIXED: Uses new handler
+                                    ref={fileInputRef} //  FIXED: Attached ref
+                                    onChange={handleFileChange} //  FIXED: Uses new handler
                                     className="hidden" 
                                      
                                 />
@@ -294,7 +294,7 @@ export default function AddStudentModal({ isOpen, onClose, filterMode = 'section
                                     setView("options"); 
                                     setImportFile(null); 
                                     setImportError(null); 
-                                    if (fileInputRef.current) fileInputRef.current.value = ""; // 🧠 FIXED: Clear ref
+                                    if (fileInputRef.current) fileInputRef.current.value = ""; //  FIXED: Clear ref
                                 }} 
                                 className="text-gray-400 hover:text-gray-600 text-sm font-medium self-center mt-1"
                             >

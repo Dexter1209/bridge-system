@@ -60,7 +60,7 @@ class ReviewCenterController extends Controller
             });
         }
 
-        // 🧠 SORTING ENGINE
+        //  SORTING ENGINE
         $rawSort = $request->get('sort', 'student_info.student_lname');
         $cleanSortColumn = explode('?', $rawSort)[0];
         $sortDirection = $request->get('direction', 'asc') === 'desc' ? 'desc' : 'asc';
@@ -170,7 +170,7 @@ class ReviewCenterController extends Controller
             });
         }
 
-        // 🧠 EXPORT SORTING
+        //  EXPORT SORTING
         $sort = $request->get('sort', 'name');
         $cleanSortColumn = explode('?', $sort)[0];
         $direction = $request->get('direction', 'asc');

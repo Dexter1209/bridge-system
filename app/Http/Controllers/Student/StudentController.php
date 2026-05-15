@@ -64,7 +64,7 @@ class StudentController extends Controller
         ]);
 
         try {
-            // 🧠 THE FIX: Handle the rich array for the Masterlist
+            //  THE FIX: Handle the rich array for the Masterlist
             $result = $action->execute($request->file('file'));
             
             $message = "Imported {$result['inserted']} new profiles and updated {$result['updated']}.";
@@ -107,7 +107,7 @@ class StudentController extends Controller
         $user = $request->user();
         
         $sortColumn = $request->get('sort', 'student_info.student_id');
-        $cleanSortColumn = explode('?', $sortColumn)[0]; // 🧠 SANITIZER
+        $cleanSortColumn = explode('?', $sortColumn)[0]; //  SANITIZER
         $direction = $request->get('direction', 'asc');
 
         if (strpos($cleanSortColumn, '.') === false && !empty($cleanSortColumn)) {
@@ -164,7 +164,7 @@ class StudentController extends Controller
                        $request->filled('batch_year') && $request->filled('board_batch');
 
         $sortColumn = $request->get('sort', 'student_info.student_id');
-        $cleanSortColumn = explode('?', $sortColumn)[0]; // 🧠 SANITIZER
+        $cleanSortColumn = explode('?', $sortColumn)[0]; //  SANITIZER
         $direction = $request->get('direction', 'asc');
 
         if (strpos($cleanSortColumn, '.') === false && !empty($cleanSortColumn)) {
@@ -424,7 +424,7 @@ class StudentController extends Controller
         $mode = $request->get('mode'); 
 
         $sortColumn = $request->get('sort', 'student_info.student_id');
-        $cleanSortColumn = explode('?', $sortColumn)[0]; // 🧠 SANITIZER
+        $cleanSortColumn = explode('?', $sortColumn)[0]; //  SANITIZER
         $direction = $request->get('direction', 'asc');
 
         $query = StudentInfo::query()->where('student_info.is_active', 1);

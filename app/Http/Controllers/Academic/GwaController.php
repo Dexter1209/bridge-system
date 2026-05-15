@@ -35,7 +35,7 @@ class GwaController extends Controller
             $q->where('academic_year', $filter['academic_year'])->where('program_id', $filter['program'])
                 ->where('year_level', $filter['year_level'])->where('semester', $filter['semester'])
                 ->where('section', $filter['section'])->where('is_active', 1);
-        })->select('student_info.*'); // 🧠 CRITICAL
+        })->select('student_info.*'); //  CRITICAL
 
         $search = $request->get('search');
         if (!empty($search)) {
@@ -45,7 +45,7 @@ class GwaController extends Controller
             });
         }
 
-        // 🧠 THE GWA DYNAMIC SORTING ENGINE
+        //  THE GWA DYNAMIC SORTING ENGINE
         $sortColumn = $request->get('sort', 'student_info.student_lname');
         $cleanSortColumn = explode('?', $sortColumn)[0];
         $sortDirection = $request->get('direction', 'asc');
@@ -217,7 +217,7 @@ class GwaController extends Controller
             $q->where('academic_year', $filter['academic_year'])->where('program_id', $filter['program'])
             ->where('year_level', $filter['year_level'])->where('semester', $filter['semester'])
             ->where('section', $filter['section'])->where('is_active', 1);
-        })->select('student_info.*'); // 🧠 CRITICAL
+        })->select('student_info.*'); //  CRITICAL
 
         if ($request->filled('search')) {
             $search = $request->search;

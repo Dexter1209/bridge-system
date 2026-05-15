@@ -144,7 +144,7 @@ export default function MockAddStudentModal({ isOpen, onClose, currentFilter, su
                                 <input 
                                     type="file" 
                                     accept=".csv"
-                                    ref={fileInputRef} // 🧠 FIXED: Attached ref
+                                    ref={fileInputRef} //  FIXED: Attached ref
                                     onChange={handleFileChange}
                                     className="hidden"                                    
                                 />

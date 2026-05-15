@@ -81,7 +81,7 @@ class ReportController extends Controller
     public function generate(Request $request)
     {
         try {
-            // 🧠 FIXED: Grab the pretty names too so they render nicely on the PDF
+            //  FIXED: Grab the pretty names too so they render nicely on the PDF
             $filters = $request->only(['college', 'program', 'year_start', 'year_end', 'college_name', 'program_name']);
             $config = $request->except(['college', 'program', 'year_start', 'year_end', 'college_name', 'program_name']);
 
@@ -115,7 +115,7 @@ class ReportController extends Controller
             $batchContext = "College {$filters['college']}, Program {$filters['program']}, Batch {$filters['year_start']}-{$filters['year_end']}";
             AuditService::logReportGeneration($batchContext, $treatment, "Generated {$treatment} report");
 
-            // 🧠 FIXED: We format the payload to be passed into every statistical processing function
+            //  FIXED: We format the payload to be passed into every statistical processing function
             $filtersPayload = [
                 'College' => $filters['college_name'] ?? $filters['college'],
                 'Program' => $filters['program_name'] ?? $filters['program'],
@@ -158,7 +158,7 @@ class ReportController extends Controller
     // STATISTICAL PROCESSING METHODS
     // ==========================================
 
-    // 🧠 FIXED: Added $filtersPayload parameter to ALL processing functions
+    //  FIXED: Added $filtersPayload parameter to ALL processing functions
     private function processDescriptive($students, $config, $filtersPayload)
     {
         $dataAssoc = $this->extractMetricData($students, $config['descField'], $config['descSub']);
@@ -177,7 +177,7 @@ class ReportController extends Controller
             'statistics' => $stats,
             'raw_data' => $data,
             'chart_type' => 'descriptive',
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -231,7 +231,7 @@ class ReportController extends Controller
                 'maxX' => $regStats['maxX'],
             ],
             'chart_type' => 'scatter',
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -274,7 +274,7 @@ class ReportController extends Controller
                 'maxX' => $stats['maxX'],
             ],
             'chart_type' => 'regression',
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -325,7 +325,7 @@ class ReportController extends Controller
                 $group1Label = "Passed Licensure"; $group2Label = "Failed Licensure";
             }
             // ==================================================
-            // 🧠 SMART CATEGORY GROUPING ENGINE
+            //  SMART CATEGORY GROUPING ENGINE
             // Automatically splits multi-variant categories into 2 standard groups!
             // ==================================================
             elseif ($config['var1Field'] === 'Scholarship') {
@@ -436,7 +436,7 @@ class ReportController extends Controller
                 'group1' => $group1,
                 'group2' => $group2
             ],
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -482,7 +482,7 @@ class ReportController extends Controller
                 'group1' => $paired1,
                 'group2' => $paired2
             ],
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -539,7 +539,7 @@ class ReportController extends Controller
                 'labels' => $labels,
                 'datasets' => $datasets
             ],
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -575,7 +575,7 @@ class ReportController extends Controller
             ],
             'chart_type' => 'chi_sq_gof',
             'raw_data' => $observed,
-            'filters' => $filtersPayload // 🧠 ADDED
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -591,7 +591,7 @@ class ReportController extends Controller
         
         $records = [];
 
-        // 🧠 Data Sanitizer for Categorical "Blanks"
+        //  Data Sanitizer for Categorical "Blanks"
         $sanitizeCategory = function($rawArray) {
             $cleaned = [];
             foreach ($rawArray as $k => $v) {

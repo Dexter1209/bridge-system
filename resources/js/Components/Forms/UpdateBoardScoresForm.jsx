@@ -12,7 +12,7 @@ export default function UpdateBoardScoresForm({
     const inputClass = "w-full border-gray-300 rounded-[5px] shadow-sm text-sm p-2 focus:border-[#ffb736] focus:ring-[#ffb736] focus:ring-1 focus:outline-none transition-colors duration-200";
     const labelClass = "block mb-0.5 font-bold text-sm text-[#5c297c]";
 
-    // 🧠 FIXED: Form is valid without an Exam Period!
+    //  FIXED: Form is valid without an Exam Period!
     const isFormValid = data.subject_id && data.score !== "";
 
     useEffect(() => {
@@ -56,7 +56,7 @@ export default function UpdateBoardScoresForm({
                     <h3 className="text-[11px] font-bold mb-4 uppercase tracking-widest opacity-70">Update Board Exam Score</h3>
                     
                     <div className="mb-4">
-                        {/* 🧠 FIXED: Exam Period Dropdown Removed. Kept Subject Dropdown full width. */}
+                        {/*  FIXED: Exam Period Dropdown Removed. Kept Subject Dropdown full width. */}
                         <CustomSelectGroup 
                             label="Select Subject:" 
                             value={data.subject_id} 

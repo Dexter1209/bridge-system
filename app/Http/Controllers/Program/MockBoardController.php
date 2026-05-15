@@ -63,7 +63,7 @@ class MockBoardController extends Controller
 
         $period = $request->get('exam_period', 'Default');
 
-        // 🧠 DYNAMIC SORTING ENGINE
+        //  DYNAMIC SORTING ENGINE
         $rawSort = $request->get('sort', 'student_info.student_lname');
         $cleanSortColumn = explode('?', $rawSort)[0];
         $sortDirection = $request->get('direction', 'asc') === 'desc' ? 'desc' : 'asc';
@@ -179,7 +179,7 @@ class MockBoardController extends Controller
         $batchNumber = $request->input('batch_number') ?? $request->input('board_batch');
         $period = $request->input('exam_period', 'Default');
 
-        // 🧠 URL SANITIZER & FILTER
+        //  URL SANITIZER & FILTER
         $cleanSubject = $request->filled('subject') ? explode('?', $request->subject)[0] : 'All';
         $subQuery = MockSubject::where('program_id', $program)->where('is_active', 1);
         if ($cleanSubject !== 'All') {
@@ -204,7 +204,7 @@ class MockBoardController extends Controller
             });
         }
 
-        // 🧠 DYNAMIC EXPORT SORTING
+        //  DYNAMIC EXPORT SORTING
         $sort = $request->get('sort', 'name');
         $cleanSortColumn = explode('?', $sort)[0];
         $direction = $request->get('direction', 'asc');

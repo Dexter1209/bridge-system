@@ -42,7 +42,7 @@ class SimulationExamController extends Controller
             $q->where('academic_year', $filter['academic_year'])->where('program_id', $filter['program'])
               ->where('year_level', $filter['year_level'])->where('semester', $filter['semester'])
               ->where('section', $filter['section'])->where('is_active', 1);
-        })->select('student_info.*'); // 🧠 CRITICAL
+        })->select('student_info.*'); //  CRITICAL
 
         if (!empty($request->search)) {
             $search = $request->search;
@@ -54,7 +54,7 @@ class SimulationExamController extends Controller
 
         $period = $request->get('exam_period', 'Default'); 
 
-        // 🧠 DYNAMIC SORTING ENGINE
+        //  DYNAMIC SORTING ENGINE
         $sortColumn = $request->get('sort', 'student_info.student_lname');
         $cleanSortColumn = explode('?', $sortColumn)[0];
         $sortDirection = $request->get('direction', 'asc');
@@ -160,7 +160,7 @@ class SimulationExamController extends Controller
             abort(403, 'Unauthorized: You cannot view data outside your assigned Program.');
         }
 
-        // 🧠 URL SANITIZER & FILTER
+        //  URL SANITIZER & FILTER
         $cleanSim = $request->filled('simulation') ? explode('?', $request->simulation)[0] : 'All';
         $simQuery = SimulationExam::where('program_id', $filter['program'])->where('is_active', 1);
         if ($cleanSim !== 'All') {
@@ -172,7 +172,7 @@ class SimulationExamController extends Controller
             $q->where('academic_year', $filter['academic_year'])->where('program_id', $filter['program'])
             ->where('year_level', $filter['year_level'])->where('semester', $filter['semester'])
             ->where('section', $filter['section'])->where('is_active', 1);
-        })->select('student_info.*'); // 🧠 CRITICAL
+        })->select('student_info.*'); //  CRITICAL
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -184,7 +184,7 @@ class SimulationExamController extends Controller
 
         $period = $request->get('exam_period', 'Default');
 
-        // 🧠 DYNAMIC EXPORT SORTING
+        //  DYNAMIC EXPORT SORTING
         $sortColumn = $request->get('sort', 'student_info.student_lname');
         $cleanSortColumn = explode('?', $sortColumn)[0];
         $sortDirection = $request->get('direction', 'asc');

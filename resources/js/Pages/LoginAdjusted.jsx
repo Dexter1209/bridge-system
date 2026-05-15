@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import BackgroundLayout from "@/Components/BackgroundLayout";
 import { toast } from "react-toastify";
-import { usePage, useForm, Link } from "@inertiajs/react"; // 🧠 ALREADY HAS: Link
+import { usePage, useForm, Link } from "@inertiajs/react"; //  ALREADY HAS: Link
 
 export default function LoginPage() {
     const { errors, flash } = usePage().props;
@@ -54,7 +54,7 @@ export default function LoginPage() {
                                 {processing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : "Log In"}
                             </button>
 
-                            {/* 🧠 ADDED: Back to SSO Link */}
+                            {/*  ADDED: Back to SSO Link */}
                             <div className="text-center mt-6">
                                 <Link href="/login" className="text-sm text-gray-400 hover:text-[#5c297c] font-medium transition-colors flex items-center justify-center gap-2">
                                     <i className="bi bi-arrow-left"></i> Back to Teams Login

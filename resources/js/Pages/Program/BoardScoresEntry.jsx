@@ -10,9 +10,9 @@ export default function BoardScoresEntry({ student, subjectOptions, currentScore
         ? `${rawStudent.lname}, ${rawStudent.fname}` 
         : "Unknown Student";
 
-    // 🧠 Notice: No exam_period needed here since it's the Actual Board Exam
+    //  Notice: No exam_period needed here since it's the Actual Board Exam
     const { data, setData, put, processing, errors, reset } = useForm({
-        subject_id: "", // 🧠 CHANGED from mock_subject_id to subject_id
+        subject_id: "", //  CHANGED from mock_subject_id to subject_id
         score: "",
     });
 

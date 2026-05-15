@@ -97,7 +97,7 @@ class ImportMasterlistAction
                 }
 
             } catch (\Exception $e) {
-                // 🧠 THE FIX: If this specific row fails, log the error and keep the loop running!
+                //  THE FIX: If this specific row fails, log the error and keep the loop running!
                 $errorCount++;
                 $errorDetails[] = "Row {$rowNumber} ({$studentNumber}): " . $e->getMessage();
             }
