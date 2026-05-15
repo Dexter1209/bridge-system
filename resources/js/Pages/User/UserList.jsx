@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, router } from "@inertiajs/react";
 import { TableContainer, SortableHeader } from "@/Components/ReusableTable";
@@ -17,6 +17,9 @@ export default function UserList({ users, queryParams = {} }) {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
 
+    // 1. Add the debounce ref
+    const initialRender = useRef(true);
+
     const fetchUsers = useCallback((overrides = {}) => {
         router.get(route('users.index'), {
             search: overrides.search ?? search,
@@ -29,13 +32,24 @@ export default function UserList({ users, queryParams = {} }) {
         });
     }, [search, sortColumn, sortDirection]);
 
+    // 2. Add the Debounce Effect
+    useEffect(() => {
+        if (initialRender.current) {
+            initialRender.current = false;
+            return;
+        }
+
+        const delayDebounceFn = setTimeout(() => {
+            fetchUsers({ search: search });
+        }, 300);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [search]); // ONLY watch 'search'
+
+    // 3. Make handleSearch ONLY update the local React state instantly
     const handleSearch = (e) => {
-        // If 'e' is an event object, get e.target.value. 
-        // If 'e' is already a string (from the ReusableTable), use it directly.
         const val = e?.target ? e.target.value : e;
-        
         setSearch(val);
-        fetchUsers({ search: val });
     };
 
     const handleSort = (column) => {
@@ -120,13 +134,13 @@ export default function UserList({ users, queryParams = {} }) {
                     <thead>
                         <tr className="bg-[#5c297c] text-white text-sm uppercase leading-normal">
                             {isRemoveMode && <th className="py-3 px-6 text-center w-[50px]"><input type="checkbox" onChange={toggleSelectAll} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></th>}
-                            <SortableHeader label="Username" sortKey="username" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
-                            <SortableHeader label="Full Name" sortKey="name" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
-                            <SortableHeader label="Email" sortKey="email" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
-                            <SortableHeader label="College" sortKey="college" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
-                            <SortableHeader label="Position" sortKey="position" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
-                            <SortableHeader label="Program" sortKey="program" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
-                            <SortableHeader label="Date Registered" sortKey="date_registered" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} />
+                            <SortableHeader label="Username" sortKey="username" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Full Name" sortKey="name" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Email" sortKey="email" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="College" sortKey="college" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Position" sortKey="position" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Program" sortKey="program" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Date Registered" sortKey="date_registered" currentSort={sortColumn} currentDirection={sortDirection} onSort={handleSort} className="bg-[#5c297c]" />
                         </tr>
                     </thead>
                     <tbody className="text-gray-600 text-sm font-medium">

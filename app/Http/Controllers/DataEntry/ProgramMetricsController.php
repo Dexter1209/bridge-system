@@ -4,9 +4,11 @@ namespace App\Http\Controllers\DataEntry;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB; //  ADDED DB FACADE
 use App\Models\ProgramMetric\MockSubject;
 use App\Models\College;
 use App\Models\Program;
+use App\Services\AuditService;
 use Inertia\Inertia;
 
 class ProgramMetricsController extends Controller
@@ -40,7 +42,6 @@ class ProgramMetricsController extends Controller
             'sub_metric' => 'required',
             'detail_name' => 'required|string',
             'is_hidden' => 'boolean',
-            // 🧠 FIXED: Made nullable
             'program_id' => 'nullable|integer|exists:programs,program_id' 
         ]);
 
@@ -61,11 +62,29 @@ class ProgramMetricsController extends Controller
             return redirect()->back()->withErrors(['program_id' => 'A specific program must be selected.']);
         }
 
+        // ==========================================
+        //  THE SAFEGUARD BOUNCER
+        // ==========================================
+        if (!$isNew && !$isActive) {
+            if ($validated['metric'] === 'MockSubjects') {
+                $inUse = DB::table('student_mock_board_scores')->where('mock_subject_id', $validated['sub_metric'])->where('is_active', 1)->exists();
+                if ($inUse) {
+                    return redirect()->back()->withErrors([
+                        'is_hidden' => 'Cannot hide this subject. It is currently tied to active mock board scores.'
+                    ]);
+                }
+            }
+        }
+        // ==========================================
+
         if ($validated['metric'] === 'MockSubjects') {
             MockSubject::updateOrCreate(
                 ['mock_subject_id' => $isNew ? null : $validated['sub_metric']],
                 ['mock_subject_name' => $validated['detail_name'], 'is_active' => $isActive, 'program_id' => $targetProgramId]
             );
+
+            $action = $isNew ? 'Added' : 'Updated';
+            AuditService::logAdditionalEntry($validated['metric'], "{$action} '{$validated['detail_name']}' (Program ID: {$targetProgramId})");
         }
 
         return redirect()->back()->with('success', 'Program metrics configuration saved successfully.');

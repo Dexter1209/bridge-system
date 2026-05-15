@@ -12,26 +12,22 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
     const isBackendReady = !!students;
     const mock = useMockInertia(MOCK_STUDENTS);
     
-    // --- RBAC AUTHORIZATION ---
     const { auth } = usePage().props;
     const user = auth.user;
     
-    // Academic Affairs / Admin are read-only. Everyone else can manage data.
     const isAcademicAffairs = ["Admin", "Academic Affairs"].includes(user?.position);
     const canManageData = !isAcademicAffairs;
 
-    // Data source
     const data = isBackendReady ? students : mock.data;
     const handlePageChange = isBackendReady ? null : mock.setPage;
 
-    // Extract student list
     const studentList = Array.isArray(data)
         ? data
         : Array.isArray(data?.data)
             ? data.data
             : Array.isArray(data?.data?.data) ? data.data.data : [];
 
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
     const currentSearch = urlParams.get('search') || '';
     const currentSortParam = urlParams.get('sort') || '';
     const currentDirectionParam = urlParams.get('direction') || 'asc';
@@ -42,8 +38,8 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
     const sortKeyMap = {
         student_number: 'student_info.student_number',
         name: 'student_info.student_lname',
-        college: 'student_info.college_id',
-        program: 'student_info.program_id',
+        college: 'colleges.name',
+        program: 'programs.name',
         age: 'student_info.student_birthdate',
         sex: 'student_info.student_sex',
         socioeconomic: 'student_info.student_socioeconomic',
@@ -52,8 +48,8 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
     const reverseSortKeyMap = {
         'student_info.student_number': 'student_number',
         'student_info.student_lname': 'name',
-        'student_info.college_id': 'college',
-        'student_info.program_id': 'program',
+        'colleges.name': 'college',
+        'programs.name': 'program',
         'student_info.student_birthdate': 'age',
         'student_info.student_sex': 'sex',
         'student_info.student_socioeconomic': 'socioeconomic',
@@ -61,10 +57,12 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
 
     const currentFrontendSort = reverseSortKeyMap[activeSortColumn] || '';
 
-    // 🧠 FIXED: Added local state and debounce ref for the search bar
     const [searchQuery, setSearchQuery] = useState(currentSearch);
     const [isRemoveMode, setIsRemoveMode] = useState(false);
-    const [selectedIds, setSelectedIds] = useState(new Set());
+    
+    //  THE FIX: Use an Object Map to store full student data across pages!
+    const [selectedStudentsMap, setSelectedStudentsMap] = useState({});
+    
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
     const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -79,17 +77,12 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
         }
 
         const delayDebounceFn = setTimeout(() => {
-            const params = { 
-                ...activeFilters, 
-                search: searchQuery,
-                sort: activeSortColumn,
-                direction: activeSortDirection
-            };
+            const params = { ...activeFilters, search: searchQuery };
+            if (activeSortColumn) { params.sort = activeSortColumn; params.direction = activeSortDirection; }
             router.get(route('student.info'), params, { preserveState: true, preserveScroll: true, replace: true });
         }, 300);
 
         return () => clearTimeout(delayDebounceFn);
-        // 🧠 FIXED: ONLY watch searchQuery! Do not watch filters or sort here to prevent loops!
     }, [searchQuery]);
 
     const handleSearch = (value) => {
@@ -108,21 +101,17 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
         let newColumn = dbColumn;
         let newDirection = 'asc';
 
-        // 🧠 FIXED: 3-State Sort Logic (Ascending -> Descending -> None)
         if (activeSortColumn === dbColumn) {
             if (activeSortDirection === 'asc') {
                 newDirection = 'desc';
             } else if (activeSortDirection === 'desc') {
-                newColumn = ''; // Reset to None
-                newDirection = ''; // Reset to None
+                newColumn = ''; 
+                newDirection = ''; 
             }
         }
 
-        // Include activeFilters for this specific page
         const params = { ...activeFilters, search: searchQuery };
-        
-        if (newColumn) params.sort = newColumn;
-        if (newDirection) params.direction = newDirection;
+        if (newColumn) { params.sort = newColumn; params.direction = newDirection; }
 
         router.get(route('student.info'), params, { preserveState: true, preserveScroll: true });
     };
@@ -135,23 +124,44 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
 
     const handleApplyFilter = (newFilters, mode) => {
         const params = { ...newFilters, search: currentSearch };
+        if (activeSortColumn) { params.sort = activeSortColumn; params.direction = activeSortDirection; }
         router.get(route('student.info'), params, { preserveState: true, preserveScroll: true });
     };
 
-    const toggleSelection = (id) => {
-        const newSelected = new Set(selectedIds);
-        newSelected.has(id) ? newSelected.delete(id) : newSelected.add(id);
-        setSelectedIds(newSelected);
+    //  THE FIX: Persistent toggling logic
+    const toggleSelection = (student) => {
+        setSelectedStudentsMap(prev => {
+            const next = { ...prev };
+            if (next[student.id]) {
+                delete next[student.id];
+            } else {
+                next[student.id] = student;
+            }
+            return next;
+        });
     };
 
     const toggleSelectAll = (e) => {
-        if (e.target.checked) {
-            setSelectedIds(new Set([...selectedIds, ...studentList.map(s => s.id)]));
-        } else {
-            setSelectedIds(new Set());
-        }
+        setSelectedStudentsMap(prev => {
+            const next = { ...prev };
+            if (e.target.checked) {
+                // Add all currently visible students
+                studentList.forEach(s => { next[s.id] = s; });
+            } else {
+                // Remove all currently visible students
+                studentList.forEach(s => { delete next[s.id]; });
+            }
+            return next;
+        });
     };
-    
+
+    const onPageChange = (url) => {
+        if (!url) return;
+        router.get(url, {}, { preserveState: true, preserveScroll: true });
+    };
+
+    const selectedArray = Object.values(selectedStudentsMap);
+    const isAllVisibleSelected = studentList.length > 0 && studentList.every(s => !!selectedStudentsMap[s.id]);
 
     return (
         <AuthenticatedLayout>
@@ -162,7 +172,8 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
                     search={searchQuery}
                     onSearch={handleSearch}
                     paginationData={data?.links ? data : { data: studentList, links: [] }}
-                    onPageChange={handlePageChange}
+                    onPageChange={isBackendReady ? onPageChange : handlePageChange}
+                    showEditNote={canManageData}
                     exportEndpoint={route('students.export', { 
                         ...activeFilters, 
                         search: currentSearch,
@@ -175,7 +186,6 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
                             <i className="bi bi-funnel-fill leading-none"></i><span className="leading-none">Filter</span>
                         </button>
                     }
-                    // Conditionally render Footer Actions based on RBAC
                     footerActions={
                         canManageData ? (
                             !isRemoveMode ? (
@@ -185,25 +195,25 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
                                 </>
                             ) : (
                                 <>
-                                    <button onClick={() => { setIsRemoveMode(false); setSelectedIds(new Set()); }} className="px-6 h-[40px] bg-white text-gray-600 border border-gray-300 rounded-[5px] text-sm font-medium hover:bg-gray-100 transition-all shadow-sm">Cancel</button>
-                                    <button onClick={() => setIsRemoveModalOpen(true)} disabled={selectedIds.size === 0} className={`px-6 h-[40px] rounded-[5px] text-sm font-medium transition-all shadow-sm ${selectedIds.size > 0 ? "bg-[#ed1c24] text-white hover:bg-[#c4151c]" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
-                                        {selectedIds.size > 0 ? `Remove (${selectedIds.size})` : "Remove Student"}
+                                    <button onClick={() => { setIsRemoveMode(false); setSelectedStudentsMap({}); }} className="px-6 h-[40px] bg-white text-gray-600 border border-gray-300 rounded-[5px] text-sm font-medium hover:bg-gray-100 transition-all shadow-sm">Cancel</button>
+                                    <button onClick={() => setIsRemoveModalOpen(true)} disabled={selectedArray.length === 0} className={`px-6 h-[40px] rounded-[5px] text-sm font-medium transition-all shadow-sm ${selectedArray.length > 0 ? "bg-[#ed1c24] text-white hover:bg-[#c4151c]" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
+                                        {selectedArray.length > 0 ? `Remove (${selectedArray.length})` : "Remove Student"}
                                     </button>
                                 </>
                             )
-                        ) : null // Return null if Academic Affairs to hide buttons entirely
+                        ) : null 
                     }
                 >
                     <thead>
                         <tr className="bg-[#5c297c] text-white text-sm uppercase leading-normal">
-                            {isRemoveMode && <th className="py-3 px-6 text-center w-[50px]"><input type="checkbox" onChange={toggleSelectAll} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></th>}
+                            {isRemoveMode && <th className="py-3 px-6 text-center w-[50px]"><input type="checkbox" checked={isAllVisibleSelected} onChange={toggleSelectAll} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></th>}
                             <SortableHeader label="Student ID" sortKey="student_number" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <SortableHeader label="Student Name" sortKey="name" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <SortableHeader label="College" sortKey="college" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <SortableHeader label="Program" sortKey="program" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <SortableHeader label="Age" sortKey="age" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} className="text-center" />
                             <SortableHeader label="Sex" sortKey="sex" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} className="text-center" />
-                            <SortableHeader label="Socioeconomic" sortKey="socioeconomic" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
+                            <SortableHeader label="Socioeconomic Status" sortKey="socioeconomic" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <th className="py-3 px-6 font-bold">Address</th>
                             <th className="py-3 px-6 font-bold">Living</th>
                             <th className="py-3 px-6 font-bold">Work Status</th>
@@ -215,10 +225,9 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
                     <tbody className="text-gray-600 text-sm font-medium">
                         {studentList.length > 0 ? studentList.map((student, i) => (
                             <tr key={student.id} className={`border-b border-gray-100 hover:bg-purple-50 transition-all ${i % 2 === 0 ? "bg-white" : "bg-[#efeded]"}`}>
-                                {isRemoveMode && <td className="py-3 px-6 text-center"><input type="checkbox" checked={selectedIds.has(student.id)} onChange={() => toggleSelection(student.id)} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></td>}
+                                {isRemoveMode && <td className="py-3 px-6 text-center"><input type="checkbox" checked={!!selectedStudentsMap[student.id]} onChange={() => toggleSelection(student)} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></td>}
                                 
                                 <td className="py-3 px-6">
-                                    {/* RBAC: Turn ID into a plain badge if they can't edit, otherwise make it a Link */}
                                     {canManageData ? (
                                         <Link href={route('students.edit', student.id)} className="inline-block px-4 py-1.5 rounded-[6px] bg-[#ffb736] text-white font-bold hover:bg-[#e0a800] hover:scale-105 hover:shadow-md transition-all min-w-[100px] text-center">
                                             {student.student_number}
@@ -252,7 +261,11 @@ export default function StudentInformation({ students, filters = {}, dbColleges 
                 {canManageData && (
                     <>
                         <AddStudentModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} filterMode={filterMode} currentFilters={activeFilters} />
-                        <RemoveStudentModal isOpen={isRemoveModalOpen} onClose={() => setIsRemoveModalOpen(false)} selectedStudents={studentList.filter(s => selectedIds.has(s.id))} />
+                        {/*  THE FIX: Pass the Object.values array directly to the Modal */}
+                        <RemoveStudentModal isOpen={isRemoveModalOpen} onClose={() => setIsRemoveModalOpen(false)} selectedStudents={selectedArray} onSuccess={() => {
+                            setIsRemoveMode(false);
+                            setSelectedStudentsMap({});
+                        }}/>
                     </>
                 )}
                 <FilterStudentModal isOpen={isFilterModalOpen} onClose={() => setIsFilterModalOpen(false)} currentFilters={activeFilters} onApply={handleApplyFilter} dbColleges={dbColleges} dbPrograms={dbPrograms} user={user} />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, router, usePage } from "@inertiajs/react";
 import { TableContainer, SortableHeader } from "@/Components/ReusableTable";
@@ -8,7 +8,6 @@ import FilterInfoCard from "@/Components/FilterInfoCard";
 import ReviewCenterAddModal from "@/Components/Modals/Program/ReviewCenterAddModal";
 
 export default function ReviewCenterPage({ students, filter, search = "", sort = "", direction = "asc", dbColleges = [], dbPrograms = [] }) {
-    // --- RBAC ---
     const { auth } = usePage().props;
     const isAcademicAffairs = ["Admin", "Academic Affairs"].includes(auth.user?.position);
     const canManageData = !isAcademicAffairs;
@@ -27,27 +26,79 @@ export default function ReviewCenterPage({ students, filter, search = "", sort =
         batch_program_name: dbPrograms.find(p => p.program_id == filter?.program)?.name || filter?.program,
     };
 
-    const handleSearch = (val) => router.get(route('review.center'), { ...filter, search: val, sort, direction }, { preserveState: true });
+    const [searchQuery, setSearchQuery] = useState(search);
+    const initialRender = useRef(true);
+
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const actualSort = urlParams.get('sort') || sort || ""; 
+    const actualDirection = urlParams.get('direction') || direction || "asc";
+
+    const reverseDbKeyMap = {
+        'student_info.student_number': 'student_number',
+        'student_info.student_lname': 'name',
+        'student_review_center.review_center': 'review_center'
+    };
+    const activeFrontendSort = reverseDbKeyMap[actualSort] || actualSort;
+
+    useEffect(() => {
+        if (initialRender.current) {
+            initialRender.current = false;
+            return;
+        }
+        const delayDebounceFn = setTimeout(() => {
+            const params = { ...filter, search: searchQuery };
+            if (actualSort) { params.sort = actualSort; params.direction = actualDirection; }
+            router.get(route('review.center'), params, { preserveState: true, preserveScroll: true, replace: true });
+        }, 300);
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery]);
+
+    const handleSearch = (val) => {
+        const text = typeof val === 'string' ? val : val?.target?.value || "";
+        setSearchQuery(text);
+    };
 
     const handleSort = (key) => {
         const dbKeyMap = { 'student_number': 'student_info.student_number', 'name': 'student_info.student_lname', 'review_center': 'student_review_center.review_center' };
-        const dbKey = dbKeyMap[key] || 'student_info.student_lname';
-        const dir = sort === dbKey && direction === 'asc' ? 'desc' : 'asc';
-        router.get(route('review.center'), { ...filter, search, sort: dbKey, direction: dir }, { preserveState: true });
+        const dbKey = dbKeyMap[key] || key; 
+        
+        let nextDir = 'asc';
+        let nextSort = dbKey;
+
+        if (actualSort === dbKey) {
+            if (actualDirection === 'asc') {
+                nextDir = 'desc';
+            } else {
+                nextDir = null;
+                nextSort = null;
+            }
+        }
+
+        const params = { ...filter, search: searchQuery };
+        if (nextSort) {
+            params.sort = nextSort;
+            params.direction = nextDir;
+        }
+        router.get(route('review.center'), params, { preserveState: true, preserveScroll: true });
     };
 
-    const handleApplyFilter = (newFilters) => router.get(route('review.center'), { ...newFilters, search, sort, direction }, { preserveState: true });
-
+    const handleApplyFilter = (newFilters) => {
+        const params = { ...newFilters, search: searchQuery };
+        if (actualSort) { params.sort = actualSort; params.direction = actualDirection; }
+        router.get(route('review.center'), params, { preserveState: true, preserveScroll: true });
+    };
+    
     return (
         <AuthenticatedLayout>
             <Head title="Student Review Center" />
             <div className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
                 <TableContainer
                     title="Student Review Center"
-                    search={search} onSearch={handleSearch}
+                    search={searchQuery} onSearch={handleSearch}
                     paginationData={students}
-                    exportEndpoint={route('review.center.export', filter)}
+                    exportEndpoint={route('review.center.export', { ...filter, search: searchQuery, sort: actualSort, direction: actualDirection })}
                     filterDisplay={<FilterInfoCard filters={enrichedFilter} mode="batch" />}
+                    showEditNote={canManageData} //  FIXED: Linked note visibility to RBAC
                     headerActions={
                         <>
                             <button onClick={() => setIsFilterModalOpen(true)} className="flex items-center justify-center gap-2 px-5 h-[40px] bg-white text-[#5c297c] border border-[#5c297c] rounded-[5px] text-sm font-bold hover:bg-[#5c297c] hover:text-white transition-all duration-300 ease-in-out shadow-sm shrink-0"><i className="bi bi-funnel-fill leading-none"></i><span className="leading-none">Filter</span></button>
@@ -62,9 +113,9 @@ export default function ReviewCenterPage({ students, filter, search = "", sort =
                 >
                     <thead>
                         <tr className="bg-[#5c297c] text-white text-sm uppercase leading-normal">
-                            <SortableHeader label="Student ID" sortKey="student_number" currentSort={sort} currentDirection={direction} onSort={handleSort} />
-                            <SortableHeader label="Student Name" sortKey="name" currentSort={sort} currentDirection={direction} onSort={handleSort} />
-                            <SortableHeader label="Review Center" sortKey="review_center" currentSort={sort} currentDirection={direction} onSort={handleSort} className="text-center" />
+                            <SortableHeader label="Student ID" sortKey="student_number" currentSort={activeFrontendSort} currentDirection={actualDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Student Name" sortKey="name" currentSort={activeFrontendSort} currentDirection={actualDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Review Center" sortKey="review_center" currentSort={activeFrontendSort} currentDirection={actualDirection} onSort={handleSort} className="bg-[#5c297c] text-center [&>div]:justify-center" />
                         </tr>
                     </thead>
                     <tbody className="text-gray-600 text-sm font-medium">

@@ -43,15 +43,22 @@ class AuthenticatedSessionController extends Controller
 
         // 3. Let them in
         $request->session()->regenerate();
-        return redirect()->intended(route('dashboard', absolute: false));
+
+        \App\Services\AuditService::logUserAuth('Logged in via standard authentication');
+        return redirect()->intended(route('main', absolute: false));
     }
 
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request)
     {
+        \App\Services\AuditService::logUserAuth('Logged out of the system');
+
         Auth::guard('web')->logout();
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        //  THE FIX: Use Inertia::location to force a hard browser refresh.
+        // This instantly stops the nprogress bar and clears all React memory.
+        return Inertia::location(route('login'));
     }
 }

@@ -8,12 +8,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use App\Services\StatisticsService;
+use App\Services\AuditService;
 
 class ReportController extends Controller
 {
     public function index(Request $request)
     {
         $filters = $request->only(['college', 'program', 'year_start', 'year_end', 'college_name', 'program_name']);
+
+        $user = $request->user();
+
+        if ($user->college_id && $filters['college'] != $user->college_id) {
+            abort(403, 'Unauthorized: You cannot generate reports outside your assigned College.');
+        }
+        if ($user->program_id && $filters['program'] != $user->program_id) {
+            abort(403, 'Unauthorized: You cannot generate reports outside your assigned Program.');
+        }
 
         if (!$filters['program']) {
             return redirect()->route('report.filter');
@@ -31,20 +41,16 @@ class ReportController extends Controller
             ->distinct()
             ->get();
 
-        // 🧠 FIXED: Changed to criteria_id so it matches the extraction logic.
-        // NOTE: If you have a separate table with the criteria NAMES, add a ->join() here just like boardSubjects above!
-        $performanceCriteria = DB::table('student_performance_rating')
-            ->select('category_id as value', 'category_id as label')
-            ->distinct()
-            ->get();
+        $performanceCriteria = \App\Models\Academic\RatingCategory::where('program_id', $filters['program'])
+            ->where('is_active', 1)
+            ->get()
+            ->map(fn($c) => ['value' => $c->category_id, 'label' => $c->category_name]);
 
-        // 🧠 FETCH SIMULATION EXAMS
-        $simExams = DB::table('student_simulation_exam')
-            ->select('simulation_id as value', 'simulation_id as label')
-            ->distinct()
-            ->get();
+        $simExams = \App\Models\Academic\SimulationExam::where('program_id', $filters['program'])
+            ->where('is_active', 1)
+            ->get()
+            ->map(fn($s) => ['value' => $s->simulation_id, 'label' => $s->simulation_name]);
 
-        // 🧠 NEW: Fetch distinct Year & Semester combinations for GWA
         $gwaTerms = DB::table('student_gwa')
             ->select('year_level', 'semester')
             ->distinct()
@@ -52,7 +58,6 @@ class ReportController extends Controller
             ->orderBy('semester')
             ->get()
             ->map(function ($gwa) {
-                // Creates a value like "1|1st" and a label like "Year 1 - Semester 1st"
                 return [
                     'value' => $gwa->year_level . '|' . $gwa->semester, 
                     'label' => "Year {$gwa->year_level} - Semester {$gwa->semester}"
@@ -64,7 +69,7 @@ class ReportController extends Controller
             'BoardGrades'       => $boardSubjects,
             'PerformanceRating' => $performanceCriteria,
             'SimExam'           => $simExams,
-            'GWA'               => $gwaTerms, // Add to the map!
+            'GWA'               => $gwaTerms, 
         ];
 
         return Inertia::render('Reports/ReportGeneration', [
@@ -72,13 +77,24 @@ class ReportController extends Controller
             'subMetricMap' => $subMetricMap
         ]);
     }
+    
     public function generate(Request $request)
     {
         try {
-            $filters = $request->only(['college', 'program', 'year_start', 'year_end']);
-            $config = $request->except(['college', 'program', 'year_start', 'year_end']);
+            //  FIXED: Grab the pretty names too so they render nicely on the PDF
+            $filters = $request->only(['college', 'program', 'year_start', 'year_end', 'college_name', 'program_name']);
+            $config = $request->except(['college', 'program', 'year_start', 'year_end', 'college_name', 'program_name']);
 
-            // 🛠️ FIXED: Added `programs` join to safely filter by college & program
+            $user = $request->user();
+
+            if ($user->college_id && $filters['college'] != $user->college_id) {
+                abort(403, 'Unauthorized: You cannot generate reports outside your assigned College.');
+            }
+            if ($user->program_id && $filters['program'] != $user->program_id) {
+                abort(403, 'Unauthorized: You cannot generate reports outside your assigned Program.');
+            }
+        
+
             $studentQuery = StudentInfo::query()
                 ->join('board_batch', 'student_info.student_number', '=', 'board_batch.student_number')
                 ->join('programs', 'board_batch.program_id', '=', 'programs.program_id')
@@ -95,25 +111,36 @@ class ReportController extends Controller
                 return response()->json(['error' => 'No students found in this primary range.'], 404);
             }
 
-            // Route to the correct statistical treatment
+            $treatment = $config['tool'] === 'inferential' ? $config['inferentialType'] : 'descriptive';
+            $batchContext = "College {$filters['college']}, Program {$filters['program']}, Batch {$filters['year_start']}-{$filters['year_end']}";
+            AuditService::logReportGeneration($batchContext, $treatment, "Generated {$treatment} report");
+
+            //  FIXED: We format the payload to be passed into every statistical processing function
+            $filtersPayload = [
+                'College' => $filters['college_name'] ?? $filters['college'],
+                'Program' => $filters['program_name'] ?? $filters['program'],
+                'Batch Year Range' => "{$filters['year_start']} - {$filters['year_end']}"
+            ];
+
+            // Route to the correct statistical treatment, passing the new filtersPayload!
             if ($config['tool'] === 'descriptive') {
-                return $this->processDescriptive($batchStudents, $config);
+                return $this->processDescriptive($batchStudents, $config, $filtersPayload);
             }
         
             if ($config['tool'] === 'inferential') {
                 switch ($config['inferentialType']) {
                     case 'pearson':
-                        return $this->processPearsonR($batchStudents, $config);
+                        return $this->processPearsonR($batchStudents, $config, $filtersPayload);
                     case 'regression':
-                        return $this->processRegression($batchStudents, $config);
+                        return $this->processRegression($batchStudents, $config, $filtersPayload);
                     case 'ttest_ind':
-                        return $this->processTTestIndependent($batchStudents, $config, $filters);
+                        return $this->processTTestIndependent($batchStudents, $config, $filters, $filtersPayload);
                     case 'ttest_dep':
-                        return $this->processTTestDependent($batchStudents, $config);
+                        return $this->processTTestDependent($batchStudents, $config, $filtersPayload);
                     case 'chi_sq_gof':
-                        return $this->processChiSquareGoF($batchStudents, $config);
+                        return $this->processChiSquareGoF($batchStudents, $config, $filtersPayload);
                     case 'chi_sq_toi':
-                        return $this->processChiSquareToI($batchStudents, $config);
+                        return $this->processChiSquareToI($batchStudents, $config, $filtersPayload);
                     default:
                         return response()->json(['error' => 'Unknown inferential type.'], 400);
                 }
@@ -131,7 +158,8 @@ class ReportController extends Controller
     // STATISTICAL PROCESSING METHODS
     // ==========================================
 
-    private function processDescriptive($students, $config)
+    //  FIXED: Added $filtersPayload parameter to ALL processing functions
+    private function processDescriptive($students, $config, $filtersPayload)
     {
         $dataAssoc = $this->extractMetricData($students, $config['descField'], $config['descSub']);
         $data = array_values($dataAssoc);
@@ -148,11 +176,12 @@ class ReportController extends Controller
             'variable_name' => $config['descFieldLabel'] . ($config['descSubLabel'] !== 'Overall ' . $config['descField'] ? ' - ' . $config['descSubLabel'] : ''),
             'statistics' => $stats,
             'raw_data' => $data,
-            'chart_type' => 'descriptive'
+            'chart_type' => 'descriptive',
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
-    private function processPearsonR($students, $config)
+    private function processPearsonR($students, $config, $filtersPayload)
     {
         $xData = $this->extractMetricData($students, $config['var1Field'], $config['var1Sub']);
         $yData = $this->extractMetricData($students, $config['var2Field'], $config['var2Sub']);
@@ -170,7 +199,7 @@ class ReportController extends Controller
         }
 
         $stats = StatisticsService::pearsonR($x, $y);
-        $regStats = StatisticsService::regression($x, $y); // 🧠 Generate Line data
+        $regStats = StatisticsService::regression($x, $y); 
 
         $absR = abs($stats['R-Value']);
         if ($absR >= 0.9) $interp = 'Very High';
@@ -195,17 +224,18 @@ class ReportController extends Controller
                 'Conclusion' => $stats['Significance']
             ],
             'raw_data' => $rawData,
-            'regression_line' => [ // 🧠 Activates the trendline in React!
+            'regression_line' => [
                 'm' => $regStats['Slope (m)'],
                 'b' => $regStats['Intercept (b)'],
                 'minX' => $regStats['minX'],
                 'maxX' => $regStats['maxX'],
             ],
-            'chart_type' => 'scatter'
+            'chart_type' => 'scatter',
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
-    private function processRegression($students, $config)
+    private function processRegression($students, $config, $filtersPayload)
     {
         $xData = $this->extractMetricData($students, $config['var1Field'], $config['var1Sub']);
         $yData = $this->extractMetricData($students, $config['var2Field'], $config['var2Sub']);
@@ -243,11 +273,12 @@ class ReportController extends Controller
                 'minX' => $stats['minX'],
                 'maxX' => $stats['maxX'],
             ],
-            'chart_type' => 'regression' 
+            'chart_type' => 'regression',
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
-    private function processTTestIndependent($students, $config, $filters)
+    private function processTTestIndependent($students, $config, $filters, $filtersPayload)
     {
         $mode = $config['independent_mode'] ?? 'categories';
         
@@ -292,13 +323,76 @@ class ReportController extends Controller
                     else $group2[] = $yData[$key];
                 }
                 $group1Label = "Passed Licensure"; $group2Label = "Failed Licensure";
-            } else if (count($uniqueX) > 2) {
+            }
+            // ==================================================
+            //  SMART CATEGORY GROUPING ENGINE
+            // Automatically splits multi-variant categories into 2 standard groups!
+            // ==================================================
+            elseif ($config['var1Field'] === 'Scholarship') {
                 foreach ($commonKeys as $key => $dummy) {
-                    if ($xData[$key] > 0) $group1[] = $yData[$key];
-                    else $group2[] = $yData[$key];
+                    $val = strtolower(trim($xData[$key]));
+                    if (in_array($val, ['none', 'n/a', 'unspecified', ''])) {
+                        $group2[] = $yData[$key];
+                    } else {
+                        $group1[] = $yData[$key];
+                    }
                 }
-                $group1Label = $config['var1FieldLabel'] . " (> 0)"; $group2Label = "Zero " . $config['var1FieldLabel'];
+                $group1Label = "With Scholarship"; $group2Label = "No Scholarship";
+            } 
+            elseif ($config['var1Field'] === 'WorkStatus') {
+                foreach ($commonKeys as $key => $dummy) {
+                    $val = strtolower(trim($xData[$key]));
+                    if (in_array($val, ['none', 'unemployed', 'n/a', 'unspecified', 'not working', ''])) {
+                        $group2[] = $yData[$key];
+                    } else {
+                        $group1[] = $yData[$key]; // Part-time, Full-time, etc.
+                    }
+                }
+                $group1Label = "Employed"; $group2Label = "Unemployed";
+            } 
+            elseif ($config['var1Field'] === 'LivingArrangement') {
+                foreach ($commonKeys as $key => $dummy) {
+                    $val = strtolower(trim($xData[$key]));
+                    if (str_contains($val, 'parent') || str_contains($val, 'family') || str_contains($val, 'home') || $val === 'none') {
+                        $group1[] = $yData[$key]; 
+                    } else {
+                        $group2[] = $yData[$key]; // Dorm, Boarding House, Independent, etc.
+                    }
+                }
+                $group1Label = "Living w/ Parents/Family"; $group2Label = "Independent/Dorm";
+            } 
+            elseif ($config['var1Field'] === 'Language') {
+                foreach ($commonKeys as $key => $dummy) {
+                    $val = strtolower(trim($xData[$key]));
+                    if (str_contains($val, 'english')) {
+                        $group1[] = $yData[$key];
+                    } else {
+                        $group2[] = $yData[$key]; // Tagalog, Cebuano, etc.
+                    }
+                }
+                $group1Label = "English Speakers"; $group2Label = "Local/Other Languages";
+            } 
+            // Fallback for Numerical Data or Unknown Categorical Data (> 2 values)
+            elseif (count($uniqueX) > 2) {
+                if (is_numeric(reset($uniqueX))) {
+                    foreach ($commonKeys as $key => $dummy) {
+                        if ((float)$xData[$key] > 0) $group1[] = $yData[$key];
+                        else $group2[] = $yData[$key];
+                    }
+                    $group1Label = $config['var1FieldLabel'] . " (> 0)"; $group2Label = "Zero " . $config['var1FieldLabel'];
+                } else {
+                    foreach ($commonKeys as $key => $dummy) {
+                        $val = strtolower(trim($xData[$key]));
+                        if (in_array($val, ['none', 'n/a', 'unspecified', ''])) {
+                            $group2[] = $yData[$key];
+                        } else {
+                            $group1[] = $yData[$key];
+                        }
+                    }
+                    $group1Label = "Has " . $config['var1FieldLabel']; $group2Label = "No " . $config['var1FieldLabel'];
+                }
             } else {
+                // Exactly 2 generic categories (e.g. Gender: Male/Female)
                 $vals = array_values($uniqueX);
                 $val1 = $vals[0] ?? null; $val2 = $vals[1] ?? null;
                 foreach ($commonKeys as $key => $dummy) {
@@ -308,6 +402,7 @@ class ReportController extends Controller
                 }
                 $group1Label = $val1 ?? "Group 1"; $group2Label = $val2 ?? "Group 2";
             }
+            // ==================================================
 
             $variableName = $config['var2FieldLabel'] . ' grouped by ' . $config['var1FieldLabel'];
         }
@@ -337,14 +432,15 @@ class ReportController extends Controller
                 'labels' => [$group1Label, $group2Label],
                 'means' => [$stats['mean1'], $stats['mean2']]
             ],
-            'raw_data' => [ // 🧠 Sends raw points to React to draw the scatter overlay!
+            'raw_data' => [ 
                 'group1' => $group1,
                 'group2' => $group2
-            ]
+            ],
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
-    private function processTTestDependent($students, $config)
+    private function processTTestDependent($students, $config, $filtersPayload)
     {
         $data1 = $this->extractMetricData($students, $config['metric'], $config['sub_metric'], $config['period_1']);
         $data2 = $this->extractMetricData($students, $config['metric'], $config['sub_metric'], $config['period_2']);
@@ -382,14 +478,15 @@ class ReportController extends Controller
                 'labels' => [$config['period_1'], $config['period_2']],
                 'means' => [$stats['mean1'], $stats['mean2']]
             ],
-            'raw_data' => [ // 🧠 Sends raw points to React to draw the scatter overlay!
+            'raw_data' => [
                 'group1' => $paired1,
                 'group2' => $paired2
-            ]
+            ],
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
-    private function processChiSquareToI($students, $config)
+    private function processChiSquareToI($students, $config, $filtersPayload)
     {
         $xData = $this->extractMetricData($students, $config['var1Field'], $config['var1Sub']);
         $yData = $this->extractMetricData($students, $config['var2Field'], $config['var2Sub']);
@@ -441,15 +538,15 @@ class ReportController extends Controller
             'chart_data' => [
                 'labels' => $labels,
                 'datasets' => $datasets
-            ]
+            ],
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
-    private function processChiSquareGoF($students, $config)
+    private function processChiSquareGoF($students, $config, $filtersPayload)
     {
         $data = $this->extractMetricData($students, $config['var1Field'], $config['var1Sub']);
         
-        // Map 1.0 and 0.0 to PASSED and FAILED to match React Expected Ratios
         if ($config['var1Field'] === 'Licensure') {
             $data = array_map(function($val) {
                 return $val == 1.0 ? 'PASSED' : 'FAILED';
@@ -477,7 +574,8 @@ class ReportController extends Controller
                 'Conclusion' => $stats['is_significant'] ? "Significant Deviation from Target" : "Fits Target Distribution"
             ],
             'chart_type' => 'chi_sq_gof',
-            'raw_data' => $observed 
+            'raw_data' => $observed,
+            'filters' => $filtersPayload //  ADDED
         ]);
     }
 
@@ -493,12 +591,26 @@ class ReportController extends Controller
         
         $records = [];
 
+        //  Data Sanitizer for Categorical "Blanks"
+        $sanitizeCategory = function($rawArray) {
+            $cleaned = [];
+            foreach ($rawArray as $k => $v) {
+                $val = trim((string)($v ?? ''));
+                $cleaned[$k] = (empty($val) || strtoupper($val) === 'N/A' || strtoupper($val) === 'NULL') ? 'None' : $val;
+            }
+            return $cleaned;
+        };
+
         switch ($field) {
             case 'Gender':
-                $records = DB::table('student_info')
+                $raw = DB::table('student_info')
                     ->whereIn('student_number', $studentNumbers)
                     ->where('is_active', 1)
                     ->pluck('student_sex', 'student_number')->toArray();
+                foreach ($raw as $k => $v) {
+                    $val = trim((string)($v ?? ''));
+                    $records[$k] = (empty($val) || strtoupper($val) === 'N/A') ? 'Unspecified' : $val;
+                }
                 break;
 
             case 'Age':
@@ -510,17 +622,53 @@ class ReportController extends Controller
                 break;
 
             case 'Socioeconomic':
-                $records = DB::table('student_info')
+                $raw = DB::table('student_info')
                     ->whereIn('student_number', $studentNumbers)
                     ->where('is_active', 1)
                     ->pluck('student_socioeconomic', 'student_number')->toArray();
+                $records = $sanitizeCategory($raw);
                 break;
 
             case 'WorkStatus':
-                $records = DB::table('student_info')
+                $raw = DB::table('student_info')
                     ->whereIn('student_number', $studentNumbers)
                     ->where('is_active', 1)
                     ->pluck('student_work', 'student_number')->toArray();
+                $records = $sanitizeCategory($raw);
+                break;
+
+            case 'LivingArrangement':
+                $raw = DB::table('student_info')
+                    ->leftJoin('living_arrangements', 'student_info.student_living', '=', 'living_arrangements.id')
+                    ->whereIn('student_info.student_number', $studentNumbers)
+                    ->where('student_info.is_active', 1)
+                    ->pluck('living_arrangements.name', 'student_info.student_number')->toArray();
+                $records = $sanitizeCategory($raw);
+                break;
+
+            case 'Scholarship':
+                $raw = DB::table('student_info')
+                    ->whereIn('student_number', $studentNumbers)
+                    ->where('is_active', 1)
+                    ->pluck('student_scholarship', 'student_number')->toArray();
+                $records = $sanitizeCategory($raw);
+                break;
+
+            case 'Language':
+                $raw = DB::table('student_info')
+                    ->leftJoin('languages', 'student_info.student_language', '=', 'languages.id')
+                    ->whereIn('student_info.student_number', $studentNumbers)
+                    ->where('student_info.is_active', 1)
+                    ->pluck('languages.name', 'student_info.student_number')->toArray();
+                $records = $sanitizeCategory($raw);
+                break;
+
+            case 'LastSchool':
+                $raw = DB::table('student_info')
+                    ->whereIn('student_number', $studentNumbers)
+                    ->where('is_active', 1)
+                    ->pluck('student_last_school', 'student_number')->toArray();
+                $records = $sanitizeCategory($raw);
                 break;
 
             case 'GWA':
@@ -529,7 +677,6 @@ class ReportController extends Controller
                     ->where('is_active', 1);
 
                 if ($subField !== 'overall') {
-                    // 🧠 NEW: Split the "1|1st" value back into two separate database filters!
                     $parts = explode('|', $subField);
                     if (count($parts) === 2) {
                         $query->where('year_level', $parts[0])
@@ -578,6 +725,24 @@ class ReportController extends Controller
                 }
                 break;
 
+            case 'ActualBoardScores':
+                $query = DB::table('student_actual_board_scores')
+                    ->whereIn('batch_id', $batchIds)
+                    ->where('is_active', 1);
+
+                if ($subField !== 'overall') {
+                    $query->where('mock_subject_id', $subField); 
+                }
+
+                $raw = $query->groupBy('batch_id')
+                    ->selectRaw('batch_id, AVG(score) as value')
+                    ->pluck('value', 'batch_id')->toArray();
+                
+                foreach($raw as $bId => $val) {
+                    if(isset($batchToStudent[$bId])) $records[$batchToStudent[$bId]] = $val;
+                }
+                break;
+
             case 'Licensure':
                 $raw = DB::table('student_licensure_exam') 
                     ->whereIn('batch_id', $batchIds)
@@ -607,7 +772,7 @@ class ReportController extends Controller
                 break;
 
             case 'SimExam':
-                $query = DB::table('student_simulation_exam') 
+                $query = DB::table('student_simulation_exams') 
                     ->whereIn('student_number', $studentNumbers)
                     ->where('is_active', 1);
 
@@ -625,7 +790,7 @@ class ReportController extends Controller
                 break;
 
             case 'Attendance':
-                $records = DB::table('student_attendance_reviews') 
+                $records = DB::table('student_attendance_review') 
                     ->whereIn('student_number', $studentNumbers)
                     ->where('is_active', 1)
                     ->groupBy('student_number')
@@ -652,6 +817,13 @@ class ReportController extends Controller
     {
         $collegeId = $request->input('college');
         $programId = $request->input('program');
+        $user = $request->user();
+        if ($user->college_id && $collegeId != $user->college_id) {
+            return response()->json(['error' => 'Unauthorized access'], 403);
+        }
+        if ($user->program_id && $programId != $user->program_id) {
+            return response()->json(['error' => 'Unauthorized access'], 403);
+        }
         $yearStart = $request->input('year_start') ?? $request->input('startYear');
         $yearEnd   = $request->input('year_end') ?? $request->input('endYear');
         $field     = $request->input('field');
@@ -661,7 +833,6 @@ class ReportController extends Controller
             return response()->json(['categories' => []]);
         }
 
-        // 🛠️ FIXED: Added `programs` join to safely filter by college & program
         $students = \App\Models\Student\StudentInfo::query()
             ->join('board_batch', 'student_info.student_number', '=', 'board_batch.student_number')
             ->join('programs', 'board_batch.program_id', '=', 'programs.program_id')

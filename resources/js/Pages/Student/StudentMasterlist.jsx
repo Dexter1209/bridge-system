@@ -10,11 +10,9 @@ export default function StudentMasterlist({ students }) {
     const isBackendReady = !!students;
     const mock = useMockInertia(MOCK_STUDENTS);
 
-    // --- RBAC AUTHORIZATION ---
     const { auth } = usePage().props;
     const user = auth.user;
     
-    // Academic Affairs / Admin are read-only
     const isAcademicAffairs = ["Admin", "Academic Affairs"].includes(user?.position);
     const canManageData = !isAcademicAffairs;
 
@@ -27,7 +25,7 @@ export default function StudentMasterlist({ students }) {
             ? data.data
             : Array.isArray(data?.data?.data) ? data.data.data : [];
 
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
     const currentSearch = urlParams.get('search') || '';
     const currentSortParam = urlParams.get('sort') || '';
     const currentDirectionParam = urlParams.get('direction') || 'asc';
@@ -36,45 +34,45 @@ export default function StudentMasterlist({ students }) {
     const activeSortDirection = isBackendReady ? currentDirectionParam : mock.sortDirection;
 
     const sortKeyMap = {
-        student_number: 'student_number',
-        name: 'student_lname',
-        college: 'college_id',
-        program: 'program_id',
-        age: 'student_birthdate',
-        sex: 'student_sex',
-        socioeconomic: 'student_socioeconomic',
-        // NEW ADDITIONS
-        address: 'student_address_city', 
-        living: 'student_living',
-        work_status: 'student_work',
-        scholarship: 'student_scholarship',
-        language: 'student_language',
-        last_school: 'student_last_school',
+        student_number: 'student_info.student_number', 
+        name: 'student_info.student_lname',
+        college: 'colleges.name',
+        program: 'programs.name',
+        age: 'student_info.student_birthdate',
+        sex: 'student_info.student_sex',
+        socioeconomic: 'student_info.student_socioeconomic',
+        address: 'student_info.student_address_city', 
+        living: 'student_info.student_living',
+        work_status: 'student_info.student_work',
+        scholarship: 'student_info.student_scholarship',
+        language: 'student_info.student_language',
+        last_school: 'student_info.student_last_school',
     };
 
     const reverseSortKeyMap = {
-        student_number: 'student_number',
-        student_lname: 'name',
-        college_id: 'college',
-        program_id: 'program',
-        student_birthdate: 'age',
-        student_sex: 'sex',
-        student_socioeconomic: 'socioeconomic',
-        // NEW ADDITIONS
-        student_address_city: 'address',
-        student_living: 'living',
-        student_work: 'work_status',
-        student_scholarship: 'scholarship',
-        student_language: 'language',
-        student_last_school: 'last_school',
+        'student_info.student_number': 'student_number',
+        'student_info.student_lname': 'name',
+        'colleges.name': 'college',
+        'programs.name': 'program',
+        'student_info.student_birthdate': 'age',
+        'student_info.student_sex': 'sex',
+        'student_info.student_socioeconomic': 'socioeconomic',
+        'student_info.student_address_city': 'address',
+        'student_info.student_living': 'living',
+        'student_info.student_work': 'work_status',
+        'student_info.student_scholarship': 'scholarship',
+        'student_info.student_language': 'language',
+        'student_info.student_last_school': 'last_school',
     };
 
     const currentFrontendSort = reverseSortKeyMap[activeSortColumn] || '';
 
-    // 🧠 FIXED: Added local state and debounce ref for the search bar
     const [searchQuery, setSearchQuery] = useState(currentSearch);
     const [isRemoveMode, setIsRemoveMode] = useState(false);
-    const [selectedIds, setSelectedIds] = useState(new Set());
+    
+    //  THE FIX: Use an Object Map to store full student data across pages!
+    const [selectedStudentsMap, setSelectedStudentsMap] = useState({});
+    
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
     const initialRender = useRef(true);
@@ -86,11 +84,9 @@ export default function StudentMasterlist({ students }) {
         }
         
         const delayDebounceFn = setTimeout(() => {
-            router.get(route('student.masterlist'), { 
-                search: searchQuery,
-                sort: activeSortColumn,
-                direction: activeSortDirection
-            }, { preserveState: true, preserveScroll: true, replace: true });
+            const params = { search: searchQuery };
+            if (activeSortColumn) { params.sort = activeSortColumn; params.direction = activeSortDirection; }
+            router.get(route('student.masterlist'), params, { preserveState: true, preserveScroll: true, replace: true });
         }, 300);
 
         return () => clearTimeout(delayDebounceFn);
@@ -98,7 +94,6 @@ export default function StudentMasterlist({ students }) {
     }, [searchQuery]);
 
     const handleSearch = (value) => {
-        // Handle both raw strings and input events
         const text = typeof value === 'string' ? value : value.target.value;
         setSearchQuery(text);
     };
@@ -112,55 +107,57 @@ export default function StudentMasterlist({ students }) {
         const dbColumn = sortKeyMap[sortKey] || 'student_info.student_id';
         
         let newColumn = dbColumn;
-        let newDirection = 'asc'; // Default first click is always Ascending
+        let newDirection = 'asc'; 
 
-        // 🧠 FIXED: 3-State Sort Logic (Ascending -> Descending -> None)
         if (activeSortColumn === dbColumn) {
             if (activeSortDirection === 'asc') {
                 newDirection = 'desc';
             } else if (activeSortDirection === 'desc') {
-                newColumn = ''; // Reset to None
-                newDirection = ''; // Reset to None
+                newColumn = ''; 
+                newDirection = ''; 
             }
         }
 
         const params = { search: searchQuery };
-        
-        // Only attach sort params if we aren't in the "None" state
-        if (newColumn) params.sort = newColumn;
-        if (newDirection) params.direction = newDirection;
+        if (newColumn) { params.sort = newColumn; params.direction = newDirection; }
 
         router.get(route('student.masterlist'), params, { preserveState: true, preserveScroll: true });
     };
 
-    const toggleSelection = (id) => {
-        const newSelected = new Set(selectedIds);
-        newSelected.has(id) ? newSelected.delete(id) : newSelected.add(id);
-        setSelectedIds(newSelected);
+    //  THE FIX: Persistent toggling logic
+    const toggleSelection = (student) => {
+        setSelectedStudentsMap(prev => {
+            const next = { ...prev };
+            if (next[student.id]) {
+                delete next[student.id];
+            } else {
+                next[student.id] = student;
+            }
+            return next;
+        });
     };
 
     const toggleSelectAll = (e) => {
-        if (e.target.checked) {
-            setSelectedIds(new Set([...selectedIds, ...studentList.map(s => s.id)]));
-        } else {
-            setSelectedIds(new Set());
-        }
-    };
-
-    // 🧠 THE FIX: Catch the payload and send it via Inertia
-    const handleBulkDelete = (reasonData, stopLoading) => {
-        router.post(route('students.bulk-destroy'), reasonData, {
-            onSuccess: () => {
-                setIsRemoveModalOpen(false);
-                setIsRemoveMode(false);
-                setSelectedIds(new Set());
-                // AuthenticatedLayout will automatically pop the Toast here!
-            },
-            onFinish: () => {
-                if (stopLoading) stopLoading(); 
+        setSelectedStudentsMap(prev => {
+            const next = { ...prev };
+            if (e.target.checked) {
+                // Add all currently visible students
+                studentList.forEach(s => { next[s.id] = s; });
+            } else {
+                // Remove all currently visible students
+                studentList.forEach(s => { delete next[s.id]; });
             }
+            return next;
         });
     };
+
+    const onPageChange = (url) => {
+        if (!url) return;
+        router.get(url, {}, { preserveState: true, preserveScroll: true });
+    };
+
+    const selectedArray = Object.values(selectedStudentsMap);
+    const isAllVisibleSelected = studentList.length > 0 && studentList.every(s => !!selectedStudentsMap[s.id]);
 
     return (
         <AuthenticatedLayout>
@@ -171,13 +168,13 @@ export default function StudentMasterlist({ students }) {
                     search={searchQuery}
                     onSearch={handleSearch}
                     paginationData={data?.links ? data : { data: studentList, links: [] }}
-                    onPageChange={handlePageChange}
+                    onPageChange={isBackendReady ? onPageChange : handlePageChange}
                     exportEndpoint={route('students.export', { 
                         search: currentSearch,
                         sort: activeSortColumn,
                         direction: activeSortDirection
                     })}
-                    // Conditionally render Footer Actions based on RBAC
+                    showEditNote={canManageData}
                     footerActions={
                         canManageData ? (
                             !isRemoveMode ? (
@@ -187,9 +184,9 @@ export default function StudentMasterlist({ students }) {
                                 </>
                             ) : (
                                 <>
-                                    <button onClick={() => { setIsRemoveMode(false); setSelectedIds(new Set()); }} className="px-6 h-[40px] bg-white text-gray-600 border border-gray-300 rounded-[5px] text-sm font-medium hover:bg-gray-100 transition-all shadow-sm">Cancel</button>
-                                    <button onClick={() => setIsRemoveModalOpen(true)} disabled={selectedIds.size === 0} className={`px-6 h-[40px] rounded-[5px] text-sm font-medium transition-all shadow-sm ${selectedIds.size > 0 ? "bg-[#ed1c24] text-white hover:bg-[#c4151c]" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
-                                        {selectedIds.size > 0 ? `Remove (${selectedIds.size})` : "Remove Student"}
+                                    <button onClick={() => { setIsRemoveMode(false); setSelectedStudentsMap({}); }} className="px-6 h-[40px] bg-white text-gray-600 border border-gray-300 rounded-[5px] text-sm font-medium hover:bg-gray-100 transition-all shadow-sm">Cancel</button>
+                                    <button onClick={() => setIsRemoveModalOpen(true)} disabled={selectedArray.length === 0} className={`px-6 h-[40px] rounded-[5px] text-sm font-medium transition-all shadow-sm ${selectedArray.length > 0 ? "bg-[#ed1c24] text-white hover:bg-[#c4151c]" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}>
+                                        {selectedArray.length > 0 ? `Remove (${selectedArray.length})` : "Remove Student"}
                                     </button>
                                 </>
                             )
@@ -198,7 +195,7 @@ export default function StudentMasterlist({ students }) {
                 >
                     <thead>
                         <tr className="bg-[#5c297c] text-white text-sm uppercase leading-normal">
-                            {isRemoveMode && <th className="py-3 px-6 text-center w-[50px]"><input type="checkbox" onChange={toggleSelectAll} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></th>}
+                            {isRemoveMode && <th className="py-3 px-6 text-center w-[50px]"><input type="checkbox" checked={isAllVisibleSelected} onChange={toggleSelectAll} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></th>}
                             <SortableHeader label="Student ID" sortKey="student_number" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <SortableHeader label="Student Name" sortKey="name" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
                             <SortableHeader label="College" sortKey="college" currentSort={currentFrontendSort} currentDirection={activeSortDirection} onSort={handleSort} />
@@ -217,10 +214,9 @@ export default function StudentMasterlist({ students }) {
                     <tbody className="text-gray-600 text-sm font-medium">
                         {studentList.length > 0 ? studentList.map((student, i) => (
                             <tr key={student.id} className={`border-b border-gray-100 hover:bg-purple-50 transition-all ${i % 2 === 0 ? "bg-white" : "bg-[#efeded]"}`}>
-                                {isRemoveMode && <td className="py-3 px-6 text-center"><input type="checkbox" checked={selectedIds.has(student.id)} onChange={() => toggleSelection(student.id)} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></td>}
+                                {isRemoveMode && <td className="py-3 px-6 text-center"><input type="checkbox" checked={!!selectedStudentsMap[student.id]} onChange={() => toggleSelection(student)} className="accent-[#5c297c] cursor-pointer w-4 h-4" /></td>}
                                 
                                 <td className="py-3 px-6">
-                                    {/* RBAC: Turn ID into a plain badge if they can't edit, otherwise make it a Link */}
                                     {canManageData ? (
                                         <Link href={route('students.edit', student.id)} className="inline-block px-4 py-1.5 rounded-[6px] bg-[#ffb736] text-white font-bold hover:bg-[#e0a800] hover:scale-105 hover:shadow-md transition-all min-w-[100px] text-center">
                                             {student.student_number}
@@ -254,7 +250,11 @@ export default function StudentMasterlist({ students }) {
                 {canManageData && (
                     <>
                         <AddStudentModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} filterMode="masterlist" />
-                        <RemoveStudentModal isOpen={isRemoveModalOpen} onClose={() => setIsRemoveModalOpen(false)} selectedStudents={studentList.filter(s => selectedIds.has(s.id))} />
+                        {/*  THE FIX: Pass the Object.values array directly to the Modal */}
+                        <RemoveStudentModal isOpen={isRemoveModalOpen} onClose={() => setIsRemoveModalOpen(false)} selectedStudents={selectedArray} onSuccess={() => {
+                            setIsRemoveMode(false);
+                            setSelectedStudentsMap({});
+                        }}/>
                     </>
                 )}
             </div>

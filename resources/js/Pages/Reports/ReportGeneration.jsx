@@ -7,73 +7,8 @@ import ReportDocument from "@/Components/Reports/ReportDocument";
 import ReportLoadingAnimation from "@/Components/Reports/ReportLoadingAnimation";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
-
-const generateDummyData = (configData) => {
-    const toolMap = {
-        descriptive: "Descriptive Statistics",
-        regression: "Regression Analysis",
-        pearson: "Pearson R Correlation",
-        chiSquareGOF: "Chi Square - Goodness of Fit",
-        chiSquareTOI: "Chi Square - Test of Independence",
-        tTestIND: "Independent T Test",
-        tTestDEP: "Dependent T Test",
-    };
-    const toolText =
-        toolMap[
-            configData.tool === "inferential"
-                ? configData.inferentialType
-                : "descriptive"
-        ];
-
-    let fieldsText = "";
-    if (configData.tool === "descriptive") {
-        fieldsText = `Field: ${configData.descField || "Selected Metric"}`;
-    } else {
-        fieldsText = `Field 1: ${configData.var1Field || "Variable 1"}\nField 2: ${configData.var2Field || "Variable 2"}`;
-    }
-
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-
-    return {
-        title: "BRIDGE Statistical Report",
-        timestamp: timestamp,
-        tool: toolText,
-        fields: fieldsText,
-        metricName: configData.descField || "Diagnostic Examinations",
-        tableData: {
-            dataset: [
-                { label: "2022", val: "0.000" },
-                { label: "2024", val: "0.000" },
-                { label: "2025", val: "0.000" },
-                { label: "2026", val: "0.000" },
-                { label: "2027", val: "0.000" },
-            ],
-            stats: [
-                { metric: "Count", val: "5" },
-                { metric: "Mean", val: "0.0000" },
-                { metric: "Median", val: "0.0000" },
-                { metric: "Minimum", val: "0.0000" },
-                { metric: "Maximum", val: "0.0000" },
-                { metric: "Std. Deviation", val: "0.0000" },
-                { metric: "Variance", val: "0.0000" },
-            ],
-        },
-        chartType: "bar",
-        chartData: {
-            labels: ["2022", "2024", "2025", "2026", "2027"],
-            datasets: [
-                {
-                    label: "Diagnostic Examinations",
-                    data: [0, 0, 0, 0, 0],
-                    backgroundColor: "#5c297c",
-                    borderColor: "#5c297c",
-                    borderWidth: 1,
-                },
-            ],
-        },
-    };
-};
+import axios from "axios";
+import { toast } from "react-toastify"; 
 
 export default function GenerateReport(props) {
     const { auth = {} } = usePage().props;
@@ -201,7 +136,7 @@ export default function GenerateReport(props) {
             }, 60000);
         } catch (error) {
             console.error("Error preparing print:", error);
-            alert("An error occurred while preparing the print document.");
+            toast.error("An error occurred while preparing the print document.");
         } finally {
             setIsProcessing(false);
         }
@@ -249,7 +184,7 @@ export default function GenerateReport(props) {
             pdf.save(`report_${formattedDate}.pdf`);
         } catch (error) {
             console.error("Error generating PDF:", error);
-            alert("An error occurred while generating the PDF.");
+            toast.error("An error occurred while generating the PDF.");
         } finally {
             setIsProcessing(false);
         }
@@ -275,39 +210,37 @@ export default function GenerateReport(props) {
 
                     // 2. Determine Chart Type and Data Structure
                     if (res.chart_type === 'regression' || res.chart_type === 'scatter') {
-                        // --- PEARSON R & REGRESSION LOGIC (Scatter + Trendline) ---
+                        
+                        // ==========================================
+                        //  RESTORED: Detailed Data Table
+                        // We put the individual student scores back into the table
+                        // ==========================================
                         datasetArray = res.raw_data.map((pt, i) => ({ 
                             label: `Student ${i + 1}`, val: `X: ${pt.x}, Y: ${pt.y}` 
                         }));
 
                         const datasets = [];
 
-                        // If Regression Line data is provided, draw the purple trendline
+                        // ==========================================
+                        //  RETAINED: Clean Visual Graph
+                        // We keep the graph clean by ONLY drawing the Regression Line
+                        // and leaving out the scatter dots.
+                        // ==========================================
                         if (res.regression_line) {
                             const { m, b, minX, maxX } = res.regression_line;
                             datasets.push({
-                                label: "Trendline",
+                                label: "Overall Trend (Regression Line)",
                                 data: [ { x: minX, y: m * minX + b }, { x: maxX, y: m * maxX + b } ],
                                 type: 'line', 
                                 borderColor: '#5c297c',
-                                borderWidth: 3,
+                                borderWidth: 4,
                                 fill: false,
                                 pointRadius: 0, 
                                 showLine: true
                             });
                         }
 
-                        // Add the raw scatter dots
-                        datasets.push({
-                            label: "Student Data",
-                            data: res.raw_data,
-                            type: 'scatter',
-                            backgroundColor: "#ffb736",
-                            borderColor: "#d97706",
-                            borderWidth: 1,
-                            pointRadius: 5,
-                            pointHoverRadius: 7
-                        });
+                        const varNames = res.variable_name.split(' vs ');
 
                         chartConfig = {
                             chartType: "scatter", 
@@ -319,12 +252,12 @@ export default function GenerateReport(props) {
                                     x: { 
                                         type: 'linear', 
                                         position: 'bottom', 
-                                        title: { display: true, text: res.variable_name.split(' vs ')[0] },
+                                        title: { display: true, text: varNames[0]?.replace('(X)', '')?.trim() || "X" },
                                         ticks: { beginAtZero: false }
                                     },
                                     y: { 
                                         type: 'linear', 
-                                        title: { display: true, text: res.variable_name.split(' vs ')[1] },
+                                        title: { display: true, text: varNames[1]?.replace('(Y)', '')?.trim() || "Y" },
                                         ticks: { beginAtZero: false }
                                     }
                                 },
@@ -352,9 +285,8 @@ export default function GenerateReport(props) {
 
                         // 2. Overlay individual student scores as jittered dots
                         if (res.raw_data && res.raw_data.group1 && res.raw_data.group2) {
-                            const jitter = () => (Math.random() - 0.5) * 0.3; // Spread dots horizontally
+                            const jitter = () => (Math.random() - 0.5) * 0.15; // Spread dots horizontally
                             
-                            // X axis is categorical (Index 0 = Group 1, Index 1 = Group 2)
                             const scatter1 = res.raw_data.group1.map(val => ({ x: 0 + jitter(), y: parseFloat(val) }));
                             const scatter2 = res.raw_data.group2.map(val => ({ x: 1 + jitter(), y: parseFloat(val) }));
 
@@ -541,10 +473,13 @@ export default function GenerateReport(props) {
                 });
 
                 setIsStatModalOpen(false);
+                toast.success("Report generated successfully!");
             }
         } catch (error) {
             console.error("Report Error:", error);
-            alert(error.response?.data?.error || "An error occurred during calculation.");
+            const errorMessage = error.response?.data?.error || error.response?.data?.message || "An error occurred during calculation. Please check your data selection.";
+            toast.error(errorMessage);
+
         } finally {
             setIsGenerating(false);
         }

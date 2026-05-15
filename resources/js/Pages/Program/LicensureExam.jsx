@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, router, usePage } from "@inertiajs/react";
 import { TableContainer, SortableHeader } from "@/Components/ReusableTable";
@@ -8,7 +8,6 @@ import FilterInfoCard from "@/Components/FilterInfoCard";
 import LicensureAddModal from "@/Components/Modals/Program/LicensureAddModal"; 
 
 export default function LicensureExamPage({ students, filter, search = "", sort = "", direction = "asc", dbColleges = [], dbPrograms = [] }) {
-    // --- RBAC ---
     const { auth } = usePage().props;
     const isAcademicAffairs = ["Admin", "Academic Affairs"].includes(auth.user?.position);
     const canManageData = !isAcademicAffairs;
@@ -26,16 +25,67 @@ export default function LicensureExamPage({ students, filter, search = "", sort 
         batch_program_name: dbPrograms.find(p => p.program_id == filter?.program)?.name || filter?.program,
     };
 
-    const handleSearch = (val) => router.get(route('licensure.exam'), { ...filter, search: val, sort, direction }, { preserveState: true });
+    const [searchQuery, setSearchQuery] = useState(search);
+    const initialRender = useRef(true);
+
+    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const actualSort = sort || urlParams.get('sort') || "";
+    const actualDirection = direction || urlParams.get('direction') || "asc";
+
+    const reverseDbKeyMap = {
+        'student_info.student_number': 'student_number',
+        'student_info.student_lname': 'name',
+        'student_licensure_exam.exam_result': 'status'
+    };
+    const activeFrontendSort = reverseDbKeyMap[actualSort] || actualSort;
+
+    useEffect(() => {
+        if (initialRender.current) {
+            initialRender.current = false;
+            return;
+        }
+        const delayDebounceFn = setTimeout(() => {
+            const params = { ...filter, search: searchQuery };
+            if (actualSort) { params.sort = actualSort; params.direction = actualDirection; }
+            router.get(route('licensure.exam'), params, { preserveState: true, preserveScroll: true, replace: true });
+        }, 300);
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery]);
+
+    const handleSearch = (val) => {
+        const text = typeof val === 'string' ? val : val?.target?.value || "";
+        setSearchQuery(text);
+    };
 
     const handleSort = (key) => {
         const dbKeyMap = { 'student_number': 'student_info.student_number', 'name': 'student_info.student_lname', 'status': 'student_licensure_exam.exam_result' };
-        const dbKey = dbKeyMap[key] || 'student_info.student_lname';
-        const dir = sort === dbKey && direction === 'asc' ? 'desc' : 'asc';
-        router.get(route('licensure.exam'), { ...filter, search, sort: dbKey, direction: dir }, { preserveState: true });
+        const dbKey = dbKeyMap[key] || key;
+        
+        let nextDir = 'asc';
+        let nextSort = dbKey;
+
+        if (actualSort === dbKey) {
+            if (actualDirection === 'asc') {
+                nextDir = 'desc';
+            } else {
+                nextDir = null;
+                nextSort = null;
+            }
+        }
+
+        const params = { ...filter, search: searchQuery };
+        if (nextSort) {
+            params.sort = nextSort;
+            params.direction = nextDir;
+        }
+        router.get(route('licensure.exam'), params, { preserveState: true, preserveScroll: true });
     };
 
-    const handleApplyFilter = (newFilters) => router.get(route('licensure.exam'), { ...newFilters, search, sort, direction }, { preserveState: true });
+    const handleApplyFilter = (newFilters) => {
+        const params = { ...newFilters, search: searchQuery };
+        if (actualSort) { params.sort = actualSort; params.direction = actualDirection; }
+        router.get(route('licensure.exam'), params, { preserveState: true, preserveScroll: true });
+    };
 
     return (
         <AuthenticatedLayout>
@@ -43,10 +93,17 @@ export default function LicensureExamPage({ students, filter, search = "", sort 
             <div className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
                 <TableContainer
                     title="Licensure Exam Results"
-                    search={search} onSearch={handleSearch}
+                    search={searchQuery} onSearch={handleSearch}
                     paginationData={students}
-                    exportEndpoint={route('licensure.exam.export', filter)}
+                    //  FIXED: Safely append export variables
+                    exportEndpoint={route('licensure.exam.export', { 
+                        ...filter, 
+                        search: searchQuery || "", 
+                        sort: actualSort || "", 
+                        direction: actualDirection || "" 
+                    })}
                     filterDisplay={<FilterInfoCard filters={enrichedFilter} mode="batch" />}
+                    showEditNote={canManageData}
                     headerActions={
                         <>
                             <button onClick={() => setIsFilterModalOpen(true)} className="flex items-center justify-center gap-2 px-5 h-[40px] bg-white text-[#5c297c] border border-[#5c297c] rounded-[5px] text-sm font-bold hover:bg-[#5c297c] hover:text-white transition-all duration-300 shadow-sm"><i className="bi bi-funnel-fill"></i> Filter</button>
@@ -61,10 +118,10 @@ export default function LicensureExamPage({ students, filter, search = "", sort 
                 >
                     <thead>
                         <tr className="bg-[#5c297c] text-white text-sm uppercase leading-normal">
-                            <SortableHeader label="Student ID" sortKey="student_number" currentSort={sort} currentDirection={direction} onSort={handleSort} />
-                            <SortableHeader label="Student Name" sortKey="name" currentSort={sort} currentDirection={direction} onSort={handleSort} />
-                            <SortableHeader label="Status" sortKey="status" currentSort={sort} currentDirection={direction} onSort={handleSort} className="text-center" />
-                            <th className="py-3 px-6 font-bold text-center">Exam Date</th>
+                            <SortableHeader label="Student ID" sortKey="student_number" currentSort={activeFrontendSort} currentDirection={actualDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Student Name" sortKey="name" currentSort={activeFrontendSort} currentDirection={actualDirection} onSort={handleSort} className="bg-[#5c297c]" />
+                            <SortableHeader label="Status" sortKey="status" currentSort={activeFrontendSort} currentDirection={actualDirection} onSort={handleSort} className="bg-[#5c297c] text-center [&>div]:justify-center" />
+                            <th className="py-3 px-6 font-bold text-center bg-[#5c297c]">Exam Date</th>
                         </tr>
                     </thead>
                     <tbody className="text-gray-600 text-sm font-medium">
